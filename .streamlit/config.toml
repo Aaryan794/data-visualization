@@ -1,0 +1,12 @@
+# Force light theme so text is dark on white (avoids white-on-white if OS/browser is dark).
+# Run the app from this folder: streamlit run app.py
+
+[theme]
+base = "light"
+primaryColor = "#0ea5e9"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f8fafc"
+textColor = "#0f172a"
+
+[client]
+toolbarMode = "minimal"
