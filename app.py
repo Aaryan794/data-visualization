@@ -665,7 +665,7 @@ def main() -> None:
         # ── Explore button ─────────────────────────────────────────────────────
         exp_col, _ = st.columns([1, 5], gap="small")
         with exp_col:
-            if st.button("🔍 Explore Charts", type="primary", use_container_width=True):
+            if st.button("Explore", type="primary", use_container_width=True):
                 st.toast("Scroll down to explore all 6 charts!", icon="📊")
 
         # ══ 6-CHART GRID  —  2 rows × 3 columns, compact height ═══════════════
