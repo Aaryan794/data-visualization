@@ -306,6 +306,25 @@ def inject_global_styles() -> None:
         color:{TEXT}; margin:0 0 .2rem;
         padding:.6rem 1rem 0;
     }}
+    /* ── Sidebar radio — remove tick marks, highlight active ── */
+    [data-testid="stSidebar"] [data-baseweb="radio"] > div:first-child {{
+        display: none !important;
+    }}
+    [data-testid="stSidebar"] [data-baseweb="radio"] {{
+        padding: .15rem .4rem !important;
+        border-radius: 6px !important;
+        transition: background .15s;
+        margin-bottom: 1px !important;
+    }}
+    [data-testid="stSidebar"] [data-baseweb="radio"]:has(input:checked) {{
+        background: rgba(14,165,233,.13) !important;
+        border-radius: 6px !important;
+    }}
+    [data-testid="stSidebar"] [data-baseweb="radio"]:has(input:checked) label,
+    [data-testid="stSidebar"] [data-baseweb="radio"]:has(input:checked) [data-testid="stMarkdownContainer"] p {{
+        color: #0ea5e9 !important;
+        font-weight: 600 !important;
+    }}
     /* ── Sidebar logo ── */
     .sidebar-logo {{
         display:flex; align-items:center; gap:.6rem;
@@ -528,11 +547,36 @@ def main() -> None:
         </div>
     </div>""", unsafe_allow_html=True)
 
-    st.sidebar.markdown("### Navigate")
+    # ── Sidebar nav — single radio, CSS hides tick marks ────────────────────────
+    st.sidebar.markdown(
+        "<p style='margin:.5rem 0 .15rem;font-size:.62rem;font-weight:700;"
+        "text-transform:uppercase;letter-spacing:.12em;color:#0ea5e9;'>"
+        "EDA — Exploratory Analysis</p>",
+        unsafe_allow_html=True)
+
     section = st.sidebar.radio(
-        "View", ["Global Overview", "Interactive Analytics", "Ethical Bias", "World Map", "AI Predictions"],
+        "nav",
+        [
+            "① Energy Mix",
+            "② Trend Line",
+            "③ KDE Density",
+            "④ Correlation",
+            "⑤ Generation",
+            "⑥ Energy Intensity",
+            "── Advanced Visualisation",
+            "Dashboard",
+            "Multi-layer",
+            "World Map",
+            "── AI Model",
+            "AI Predictions",
+        ],
         label_visibility="collapsed",
+        key="main_nav",
     )
+
+    if section.startswith("──"):
+        section = "Dashboard"
+
     st.sidebar.markdown('<hr class="soft"/>', unsafe_allow_html=True)
     st.sidebar.caption("Export the median-imputed dataset.")
     st.sidebar.download_button(
@@ -542,162 +586,11 @@ def main() -> None:
         mime="text/csv",
         use_container_width=True,
     )
-
     plot_cfg = {"displayModeBar": True, "displaylogo": False, "scrollZoom": True}
 
     # =========================================================================
-    # GLOBAL OVERVIEW
     # =========================================================================
-    if section == "Global Overview":
-        section_header("Global overview",
-                       "Key SDG 7 metrics, long-run trends, ethical bias analysis, and data reshaping.")
-
-        c1, c2, c3, c4 = st.columns(4, gap="medium")
-        c1.metric("Avg electricity access",
-                  f"{format_number(df[COL_ACCESS].mean(), 1)}%")
-        c2.metric("Avg CO₂ emissions",
-                  f"{format_number(df[COL_CO2].mean(), 0)} kt")
-        c3.metric("Avg renewable share",
-                  f"{format_number(df[COL_RENEW].mean(), 1)}%")
-        c4.metric("Avg clean cooking",
-                  f"{format_number(df['Access to clean fuels for cooking'].mean(), 1)}%")
-
-        yearly = (df.groupby("Year", as_index=False)[[COL_ACCESS, COL_CO2]]
-                    .mean().sort_values("Year"))
-
-        with st.container(border=True):
-            st.markdown('<p class="chart-card-title">Global trends — world average by year</p>',
-                        unsafe_allow_html=True)
-            st.plotly_chart(figure_dual_axis_global_trends(yearly),
-                            use_container_width=True, config=plot_cfg)
-
-        # ── Ethical Bias section ──────────────────────────────────────────────
-        st.markdown("<div style='height:.4rem'></div>", unsafe_allow_html=True)
-        st.markdown('''
-        <div style="background:#fff7ed;border-left:4px solid #f97316;border-radius:0 10px 10px 0;
-                    padding:.75rem 1.1rem;margin-bottom:1rem;">
-          <p style="font-family:'Space Grotesk',sans-serif;font-size:.78rem;font-weight:700;
-                     color:#c2410c;margin:0 0 .25rem;text-transform:uppercase;
-                     letter-spacing:.08em;">⚠ Ethical Bias — SDG 7</p>
-          <p style="font-size:.85rem;color:#7c2d12;margin:0;line-height:1.6;">
-            High-income countries generate the most CO₂ yet control financial flows for
-            clean energy. Many lower-income nations remain systematically excluded from
-            clean energy investment despite facing disproportionate climate impacts.
-          </p>
-        </div>''', unsafe_allow_html=True)
-
-        ov1, ov2 = st.columns(2, gap="medium")
-
-        # Ethical bias scatter: GDP per capita vs CO₂, colour = electricity access
-        with ov1:
-            with st.container(border=True):
-                st.markdown(
-                    '<p class="chart-card-title">GDP per capita vs CO₂ — ethical bias view</p>',
-                    unsafe_allow_html=True)
-                # Use imputed df so no NaN gaps; use ALL years averaged for stability
-                bias_df = (
-                    df.groupby("Entity", as_index=False)
-                    .agg({COL_GDP: "mean", COL_CO2: "mean", COL_ACCESS: "mean", COL_RENEW: "mean"})
-                    .dropna(subset=[COL_GDP, COL_CO2, COL_ACCESS])
-                    .copy()
-                )
-                bias_df["_co2_size"] = (bias_df[COL_CO2].clip(lower=1) ** 0.38)
-                bias_fig = px.scatter(
-                    bias_df,
-                    x=COL_GDP, y=COL_CO2,
-                    size="_co2_size",
-                    size_max=40,
-                    color=COL_ACCESS,
-                    hover_name="Entity",
-                    color_continuous_scale="RdYlGn",
-                    range_color=[0, 100],
-                    log_x=True, log_y=True,
-                    labels={
-                        COL_GDP:    "GDP per capita (log, USD)",
-                        COL_CO2:    "CO₂ emissions (log, kt)",
-                        COL_ACCESS: "Electricity access %",
-                        "_co2_size": "",
-                    },
-                    title="GDP vs CO₂ — colour = electricity access (2000–2020 avg)",
-                )
-                bias_fig.update_traces(
-                    marker=dict(opacity=0.75, line=dict(width=0.5, color="#e2e8f0")))
-                for txt, ax, ay in [
-                    ("High CO₂ · High income", 0.93, 0.96),
-                    ("Low CO₂ · Low income",   0.05, 0.06),
-                ]:
-                    bias_fig.add_annotation(
-                        xref="paper", yref="paper",
-                        x=ax, y=ay, text=txt,
-                        showarrow=False,
-                        font=dict(size=9, color="#94a3b8",
-                                  family="JetBrains Mono, monospace"),
-                        align="center",
-                    )
-                style_figure(bias_fig, height=340)
-                st.plotly_chart(bias_fig, use_container_width=True, config=plot_cfg)
-                st.caption(
-                    "Ethical insight: wealthy nations cluster top-right (high CO₂, high access). "
-                    "Low-income nations bottom-left receive less clean energy investment "
-                    "despite lower historical emissions."
-
-                )
-
-        # Pivot heatmap: top-10 emitters × years, renewable share
-        with ov2:
-            with st.container(border=True):
-                st.markdown(
-                    '<p class="chart-card-title">Renewable share — pivot: top 10 emitters × year</p>',
-                    unsafe_allow_html=True)
-                # Data reshaping: pivot (Entity × Year)
-                top10_entities = (
-                    df_raw.groupby("Entity")[COL_CO2].mean()
-                    .nlargest(10).index.tolist()
-                )
-                pivot_df = (
-                    df_raw[df_raw["Entity"].isin(top10_entities)]
-                    [["Entity", "Year", COL_RENEW]]
-                    .dropna()
-                )
-                pivot_df = pivot_df[
-                    (pivot_df["Year"] >= ASSIGN_Y0) & (pivot_df["Year"] <= ASSIGN_Y1)
-                ]
-                try:
-                    pivot_table = pivot_df.pivot(
-                        index="Entity", columns="Year", values=COL_RENEW
-                    )
-                    pivot_fig = px.imshow(
-                        pivot_table,
-                        color_continuous_scale="YlGn",
-                        aspect="auto",
-                        title="Renewable energy share (%) — pivot reshape",
-                        labels={"color": "Renewable %"},
-                    )
-                    pivot_fig.update_layout(
-                        xaxis=dict(tickfont=dict(size=9,
-                                                  family="JetBrains Mono, monospace")),
-                        yaxis=dict(tickfont=dict(size=9,
-                                                  family="Space Grotesk, sans-serif")),
-                        coloraxis_colorbar=dict(
-                            thickness=10, len=0.6,
-                            tickfont=dict(size=8, family="JetBrains Mono, monospace"),
-                        ),
-                    )
-                    style_figure(pivot_fig, height=340)
-                    st.plotly_chart(pivot_fig, use_container_width=True, config=plot_cfg)
-                    st.caption(
-                        "Data reshaping: df.pivot(index='Entity', columns='Year', "
-                        "values=COL_RENEW) — top 10 CO₂ emitters. "
-                        "Shows China & India gaining renewables while others plateau."
-                    )
-                except Exception as e:
-                    st.warning(f"Pivot failed: {e}")
-
-    # =========================================================================
-    # =========================================================================
-    # INTERACTIVE ANALYTICS  —  no-scroll 6-chart grid, compact filter bar on top
-    # =========================================================================
-    elif section == "Interactive Analytics":
+    if section == "Dashboard":
         import numpy as np
         from scipy.stats import gaussian_kde
 
@@ -768,6 +661,12 @@ def main() -> None:
                   f"${format_number(year_data[COL_GDP].mean(),0)}", help=_h)
 
         st.markdown("<div style='height:.4rem'></div>", unsafe_allow_html=True)
+
+        # ── Explore button ─────────────────────────────────────────────────────
+        exp_col, _ = st.columns([1, 5], gap="small")
+        with exp_col:
+            if st.button("🔍 Explore Charts", type="primary", use_container_width=True):
+                st.toast("Scroll down to explore all 6 charts!", icon="📊")
 
         # ══ 6-CHART GRID  —  2 rows × 3 columns, compact height ═══════════════
         GRID_H = 265   # shorter so all 6 fit without scrolling
@@ -943,89 +842,264 @@ def main() -> None:
 
     # ETHICAL BIAS  —  standalone chart section
     # =========================================================================
-    elif section == "Ethical Bias":
-        section_header("Ethical bias — SDG 7",
-                       "High-income countries emit the most CO₂ yet control clean energy finance. "
-                       "Low-income nations face the greatest access gap.")
+    elif section == "① Energy Mix":
+        section_header("① Energy Mix Trend", "Stacked area — global electricity generation by source (TWh), 2000–2020.")
+        df_win_c = df[(df["Year"] >= ASSIGN_Y0) & (df["Year"] <= ASSIGN_Y1)].copy()
+        src_cols = [c for c in [COL_FOSSIL, COL_NUCLEAR, COL_RENEW_ELEC] if c in df_win_c.columns]
+        if src_cols:
+            with st.container(border=True):
+                area_yr = df_win_c.groupby("Year", as_index=False)[src_cols].sum().sort_values("Year")
+                area_melt = area_yr.melt(id_vars=["Year"], var_name="Source", value_name="TWh")
+                area_melt["Source"] = (area_melt["Source"].str.replace("Electricity from ", "", regex=False).str.replace(r" \(TWh\)$", "", regex=True))
+                af = px.area(area_melt, x="Year", y="TWh", color="Source",
+                             title="Global electricity generation by source (TWh) — 2000–2020",
+                             color_discrete_map={"fossil fuels":"#94a3b8","nuclear":ACCENT2,"renewables":ACCENT})
+                af.update_traces(line=dict(width=1.5))
+                af.update_layout(legend=dict(orientation="h", y=1.02, x=1, xanchor="right"))
+                style_figure(af, height=500)
+                st.plotly_chart(af, use_container_width=True, config=plot_cfg)
+                st.caption("Fossil fuels grow in absolute TWh despite renewable growth — showing global demand is outpacing the clean energy transition.")
 
-        # Ethical bias callout
-        st.markdown('''
-        <div style="background:#fff7ed;border-left:4px solid #f97316;border-radius:0 10px 10px 0;
-                    padding:.8rem 1.2rem;margin-bottom:1rem;">
-          <p style="font-family:'Space Grotesk',sans-serif;font-size:.78rem;font-weight:700;
-                     color:#c2410c;margin:0 0 .3rem;text-transform:uppercase;
-                     letter-spacing:.08em;">⚠ Ethical Bias Insight</p>
-          <p style="font-size:.9rem;color:#7c2d12;margin:0;line-height:1.7;">
-            While high-income countries emit the most CO₂, financial flows for clean energy
-            are concentrated in only a few developing regions — leaving many lower-income
-            nations behind despite their disproportionate vulnerability to climate change.
-            This chart visualises the structural inequality embedded in global energy access.
-          </p>
-        </div>''', unsafe_allow_html=True)
 
-        # KPI strip
-        bias_df_all = (
-            df.groupby("Entity", as_index=False)
-              .agg({COL_GDP:"mean", COL_CO2:"mean", COL_ACCESS:"mean", COL_RENEW:"mean"})
-              .dropna(subset=[COL_GDP, COL_CO2, COL_ACCESS])
-        )
-        top_em  = bias_df_all.nlargest(10, COL_CO2)
-        low_acc = bias_df_all[bias_df_all[COL_ACCESS] < 50]
-        b1, b2, b3, b4 = st.columns(4, gap="small")
-        b1.metric("Countries analysed",   f"{len(bias_df_all):,}")
-        b2.metric("Countries <50% access", f"{len(low_acc):,}",
-                  help="Countries with avg electricity access below 50%")
-        b3.metric("Top-10 emitter avg CO₂",
-                  f"{format_number(top_em[COL_CO2].mean(),0)} kt",
-                  help="Average CO₂ of top 10 emitting countries")
-        b4.metric("Low-access avg CO₂",
-                  f"{format_number(low_acc[COL_CO2].mean(),0)} kt",
-                  help="Average CO₂ of countries with <50% electricity access")
-
-        st.markdown("<div style='height:.6rem'></div>", unsafe_allow_html=True)
-
-        # Full-width ethical bias scatter
+    elif section == "② Trend Line":
+        section_header("② Energy Metric Trend", "Global average trend with ±1 standard deviation band — select a metric below.")
+        import numpy as np
+        fc1, fc2 = st.columns([1.5, 2], gap="small")
+        with fc1:
+            em2 = st.selectbox("Energy metric", ["Electricity access","Renewable share","Clean cooking"], key="c2_em")
+        metric_map2 = {"Electricity access": COL_ACCESS, "Renewable share": COL_RENEW, "Clean cooking": "Access to clean fuels for cooking"}
+        col2 = metric_map2[em2]
+        df_win_c2 = df[(df["Year"] >= ASSIGN_Y0) & (df["Year"] <= ASSIGN_Y1)].copy()
         with st.container(border=True):
-            st.markdown('<p class="chart-card-title">GDP per capita vs CO₂ emissions '
-                        '— colour = electricity access %, size = CO₂ magnitude</p>',
-                        unsafe_allow_html=True)
-            bias_df_all["_co2_size"] = (bias_df_all[COL_CO2].clip(lower=1) ** 0.38)
-            bias_fig = px.scatter(
-                bias_df_all,
-                x=COL_GDP, y=COL_CO2,
-                size="_co2_size", size_max=52,
-                color=COL_ACCESS,
-                hover_name="Entity",
-                color_continuous_scale="RdYlGn",
-                range_color=[0, 100],
-                log_x=True, log_y=True,
-                labels={
-                    COL_GDP:    "GDP per capita (log, USD)",
-                    COL_CO2:    "CO₂ emissions (log, kt)",
-                    COL_ACCESS: "Electricity access %",
-                    "_co2_size": "",
-                },
-                title="Ethical bias: GDP vs CO₂ — colour = electricity access (2000–2020 country avg)",
-            )
-            bias_fig.update_traces(
-                marker=dict(opacity=0.78, line=dict(width=0.6, color="#e2e8f0")))
-            for txt, ax, ay in [
-                ("High CO₂ · High income", 0.94, 0.96),
-                ("Low CO₂ · Low income",   0.04, 0.05),
-            ]:
-                bias_fig.add_annotation(
-                    xref="paper", yref="paper", x=ax, y=ay, text=txt,
-                    showarrow=False,
-                    font=dict(size=10, color="#94a3b8",
-                              family="JetBrains Mono, monospace"))
-            style_figure(bias_fig, height=520)
-            st.plotly_chart(bias_fig, use_container_width=True, config=plot_cfg)
-            st.caption(
-                "Each bubble = one country (2000–2020 average). "
-                "Green bubbles (high electricity access) cluster top-right — rich and high-emitting. "
-                "Red bubbles (low access) sit bottom-left — poor, low-emitting, yet most climate-vulnerable. "
-                "Bubble size ∝ CO₂ magnitude."
-            )
+            ga = df_win_c2.groupby("Year", as_index=False)[col2].mean().sort_values("Year")
+            std_v = df_win_c2.groupby("Year")[col2].std().reindex(ga["Year"]).fillna(0).values
+            lf = px.line(ga, x="Year", y=col2, markers=True,
+                         title=f"Global average — {em2} (2000–2020)",
+                         labels={col2: em2})
+            lf.update_traces(line=dict(color=ACCENT, width=2.5), marker=dict(size=7, color=ACCENT))
+            lf.add_traces([go.Scatter(
+                x=list(ga["Year"])+list(ga["Year"])[::-1],
+                y=list(ga[col2]+std_v)+list((ga[col2]-std_v).clip(lower=0))[::-1],
+                fill="toself", fillcolor="rgba(14,165,233,0.10)",
+                line=dict(color="rgba(0,0,0,0)"), showlegend=False, hoverinfo="skip")])
+            style_figure(lf, height=500)
+            st.plotly_chart(lf, use_container_width=True, config=plot_cfg)
+            st.caption("Shaded band = ±1 std deviation. Wide band means high inequality between countries — the mean alone is misleading.")
+
+
+    elif section == "③ KDE Density":
+        section_header("③ KDE Density Distribution", "Kernel density estimate showing how countries are distributed across the chosen metric.")
+        import numpy as np
+        from scipy.stats import gaussian_kde
+        fc1, fc2, fc3 = st.columns([1.5, 1.5, 2], gap="small")
+        with fc1:
+            yr3 = st.slider("Year", min_value=max(int(df["Year"].min()),ASSIGN_Y0), max_value=min(int(df["Year"].max()),ASSIGN_Y1), value=min(int(df["Year"].max()),ASSIGN_Y1), key="c3_yr")
+        with fc2:
+            em3 = st.selectbox("Energy metric", ["Electricity access","Renewable share","Clean cooking"], key="c3_em")
+        metric_map3 = {"Electricity access": COL_ACCESS, "Renewable share": COL_RENEW, "Clean cooking": "Access to clean fuels for cooking"}
+        col3 = metric_map3[em3]
+        yr_raw3 = df_raw[df_raw["Year"] == yr3].copy()
+        with st.container(border=True):
+            dens_vals = yr_raw3[col3].dropna().values
+            if len(dens_vals) > 3:
+                kde_fn = gaussian_kde(dens_vals, bw_method="scott")
+                xr = np.linspace(dens_vals.min(), dens_vals.max(), 300)
+                yk = kde_fn(xr)
+                mean_v = float(np.mean(dens_vals))
+                med_v  = float(np.median(dens_vals))
+                dfig = go.Figure()
+                dfig.add_trace(go.Scatter(x=xr, y=yk, mode="lines", fill="tozeroy",
+                                          fillcolor="rgba(14,165,233,0.12)",
+                                          line=dict(color=ACCENT, width=2.5), name="KDE"))
+                dfig.add_trace(go.Scatter(x=dens_vals, y=[-yk.max()*0.04]*len(dens_vals),
+                                          mode="markers",
+                                          marker=dict(symbol="line-ns-open", size=10, color=ACCENT,
+                                                      opacity=0.35, line=dict(width=1.2, color=ACCENT)),
+                                          name="Countries", showlegend=False))
+                dfig.add_vline(x=mean_v, line_dash="dash", line_color=ACCENT2, line_width=2,
+                               annotation_text=f"Mean {mean_v:.1f}", annotation_position="top right",
+                               annotation_font=dict(size=10, color=ACCENT2))
+                dfig.add_vline(x=med_v, line_dash="dot", line_color=ACCENT3, line_width=2,
+                               annotation_text=f"Median {med_v:.1f}", annotation_position="bottom right",
+                               annotation_font=dict(size=10, color=ACCENT3))
+                dfig.update_layout(title=f"{em3} distribution — {yr3}",
+                                   xaxis_title=em3, yaxis_title="Density",
+                                   showlegend=False, paper_bgcolor="#ffffff", plot_bgcolor="#fafafa",
+                                   height=500, margin=dict(t=52, l=60, r=24, b=52),
+                                   font=dict(family="Space Grotesk, sans-serif", size=11, color=TEXT_MUTED),
+                                   xaxis=dict(showgrid=True, gridcolor="#f1f5f9", zeroline=False),
+                                   yaxis=dict(showgrid=True, gridcolor="#f1f5f9", zeroline=False),
+                                   hoverlabel=dict(bgcolor="#1e293b", font_color="#f8fafc", font_size=12))
+                st.plotly_chart(dfig, use_container_width=True, config=plot_cfg)
+                st.caption("Rug ticks at bottom = individual countries. Bimodal curve = two clusters of countries (near 100% and near 20–40%).")
+
+
+    elif section == "④ Correlation":
+        section_header("④ Indicator Correlation Matrix", "Bubble heatmap — circle size = strength |r|, colour = direction (blue positive, red negative).")
+        df_win_c4 = df[(df["Year"] >= ASSIGN_Y0) & (df["Year"] <= ASSIGN_Y1)].copy()
+        with st.container(border=True):
+            hcols = [c for c in [COL_ACCESS, "Access to clean fuels for cooking", COL_RENEW, COL_CO2, COL_GDP, COL_FOSSIL, COL_NUCLEAR, COL_RENEW_ELEC, COL_EI] if c in df_win_c4.columns]
+            lbl  = short_corr_labels()
+            corr = df_win_c4[hcols].corr(numeric_only=True).rename(index=lbl, columns=lbl)
+            n    = len(corr)
+            xs, ys = list(corr.columns), list(corr.index)
+            bx, by, br, bc, bt, bcd = [], [], [], [], [], []
+            for ri, rl in enumerate(ys):
+                for ci, cl in enumerate(xs):
+                    v = corr.loc[rl, cl]
+                    bx.append(ci); by.append(ri)
+                    br.append(abs(v)*42+4); bc.append(v)
+                    bt.append(f"{v:.2f}"); bcd.append([rl, cl])
+            hm4 = go.Figure()
+            hm4.add_trace(go.Scatter(x=bx, y=by, mode="markers+text",
+                marker=dict(size=br, color=bc, sizemode="diameter",
+                            colorscale=[[0,"#dc2626"],[.5,"#f8fafc"],[1,"#0369a1"]],
+                            cmin=-1, cmax=1,
+                            colorbar=dict(title=dict(text="r"), thickness=12, len=0.7,
+                                         tickfont=dict(size=9), tickvals=[-1,-0.5,0,0.5,1]),
+                            line=dict(width=0.5, color="#e2e8f0")),
+                text=bt, textfont=dict(size=8, color="#374151"), textposition="middle center",
+                hovertemplate="<b>%{customdata[0]}</b> vs <b>%{customdata[1]}</b><br>r = %{marker.color:.3f}<extra></extra>",
+                customdata=bcd))
+            hm4.update_layout(
+                title="Indicator correlation matrix (2000–2020)",
+                paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
+                height=520, margin=dict(t=52, b=80, l=90, r=60),
+                xaxis=dict(tickmode="array", tickvals=list(range(n)), ticktext=xs,
+                           tickangle=38, showgrid=False, zeroline=False,
+                           tickfont=dict(size=9, color="#475569", family="Space Grotesk, sans-serif")),
+                yaxis=dict(tickmode="array", tickvals=list(range(n)), ticktext=ys,
+                           autorange="reversed", showgrid=False, zeroline=False,
+                           tickfont=dict(size=9, color="#475569", family="Space Grotesk, sans-serif")),
+                font=dict(family="Space Grotesk, sans-serif", size=10),
+                hoverlabel=dict(bgcolor="#1e293b", font_color="#f8fafc", font_size=12))
+            for k in range(n+1):
+                hm4.add_hline(y=k-.5, line_color="#f1f5f9", line_width=0.8)
+                hm4.add_vline(x=k-.5, line_color="#f1f5f9", line_width=0.8)
+            st.plotly_chart(hm4, use_container_width=True, config=plot_cfg)
+            st.caption("Strong positive (large blue): GDP vs electricity access (r≈0.71). Strong negative: energy intensity vs GDP (r≈−0.34) — richer countries use energy more efficiently.")
+
+
+    elif section == "⑤ Generation":
+        section_header("⑤ Electricity Generation by Source", "Stacked bar chart — global TWh per source per year (2000–2020).")
+        df_win_c5 = df[(df["Year"] >= ASSIGN_Y0) & (df["Year"] <= ASSIGN_Y1)].copy()
+        src_cols = [c for c in [COL_FOSSIL, COL_NUCLEAR, COL_RENEW_ELEC] if c in df_win_c5.columns]
+        if src_cols:
+            with st.container(border=True):
+                ey = df_win_c5.groupby("Year", as_index=False)[src_cols].sum().sort_values("Year")
+                el = ey.melt(id_vars=["Year"], var_name="Source", value_name="TWh")
+                el["Source"] = (el["Source"].str.replace("Electricity from ", "", regex=False).str.replace(r" \(TWh\)$", "", regex=True))
+                bf = px.bar(el, x="Year", y="TWh", color="Source", barmode="stack",
+                            title="Global electricity generation by source (TWh) — 2000–2020",
+                            color_discrete_map={"fossil fuels":"#94a3b8","nuclear":ACCENT2,"renewables":ACCENT})
+                bf.update_layout(legend=dict(orientation="h", y=1.02, x=1, xanchor="right"))
+                style_figure(bf, height=500)
+                st.plotly_chart(bf, use_container_width=True, config=plot_cfg)
+                st.caption("Renewables grow post-2015 but fossil fuels also grow in absolute terms — global electricity demand outpacing the clean energy transition.")
+
+
+    elif section == "⑥ Energy Intensity":
+        section_header("⑥ Energy Intensity by Year", "Box plot — distribution of energy intensity (MJ per $2017 PPP GDP) across all countries.")
+        df_win_c6 = df[(df["Year"] >= ASSIGN_Y0) & (df["Year"] <= ASSIGN_Y1)].copy()
+        if COL_EI in df_win_c6.columns:
+            with st.container(border=True):
+                bx_ei = px.box(df_win_c6, x="Year", y=COL_EI,
+                               points="suspectedoutliers",
+                               title="Energy intensity distribution — all countries (2000–2020)",
+                               labels={COL_EI: "MJ / $2017 PPP GDP"},
+                               color_discrete_sequence=[ACCENT3])
+                bx_ei.update_xaxes(tickangle=45, tickfont=dict(size=9))
+                style_figure(bx_ei, height=500)
+                st.plotly_chart(bx_ei, use_container_width=True, config=plot_cfg)
+                st.caption("Median declines each year — global efficiency improving. Persistent outliers = countries with energy-intensive industrial structure.")
+
+
+    elif section == "Multi-layer":
+        section_header("Multi-layer Visualization",
+                       "Stacked bar (generation by source) with a trend line overlay — bar + line on the same axes.")
+
+        df_win_ml = df[(df["Year"] >= ASSIGN_Y0) & (df["Year"] <= ASSIGN_Y1)].copy()
+
+        with st.container(border=True):
+            st.markdown(
+                '<p class="chart-card-title">Global electricity generation by source (TWh) — bar + CO₂ trend line overlay</p>',
+                unsafe_allow_html=True)
+
+            src_cols = [c for c in [COL_FOSSIL, COL_NUCLEAR, COL_RENEW_ELEC]
+                        if c in df_win_ml.columns]
+
+            if src_cols and COL_CO2 in df_win_ml.columns:
+                # Aggregate by year
+                yr_src = (df_win_ml.groupby("Year", as_index=False)[src_cols].sum()
+                                   .sort_values("Year"))
+                yr_co2 = (df_win_ml.groupby("Year", as_index=False)[COL_CO2].mean()
+                                   .sort_values("Year"))
+
+                src_melt = yr_src.melt(id_vars=["Year"], var_name="Source", value_name="TWh")
+                src_melt["Source"] = (src_melt["Source"]
+                                      .str.replace("Electricity from ", "", regex=False)
+                                      .str.replace(r" \(TWh\)$", "", regex=True))
+
+                # ── Layer 1: Stacked bar ──────────────────────────────────────
+                ml_fig = px.bar(
+                    src_melt, x="Year", y="TWh", color="Source",
+                    barmode="stack",
+                    color_discrete_map={
+                        "fossil fuels": "#94a3b8",
+                        "nuclear":      ACCENT2,
+                        "renewables":   ACCENT,
+                    },
+                    labels={"TWh": "Electricity Generation (TWh)"},
+                )
+
+                # ── Layer 2: CO₂ trend line overlaid on secondary Y-axis ──────
+                ml_fig.add_trace(go.Scatter(
+                    x=yr_co2["Year"],
+                    y=yr_co2[COL_CO2],
+                    mode="lines+markers",
+                    name="Avg CO₂ (kt)",
+                    yaxis="y2",
+                    line=dict(color="#e11d48", width=2.5, dash="solid"),
+                    marker=dict(size=6, color="#e11d48"),
+                ))
+
+                # ── Dual Y-axis layout ────────────────────────────────────────
+                ml_fig.update_layout(
+                    title="Electricity generation (bars) vs Average CO₂ trend (line) — 2000–2020",
+                    yaxis=dict(
+                        title="Electricity Generation (TWh)",
+                        showgrid=True, gridcolor="#f1f5f9",
+                        tickfont=dict(family="JetBrains Mono, monospace", size=10),
+                    ),
+                    yaxis2=dict(
+                        title=dict(text="Avg National CO₂ (kt)", font=dict(color="#e11d48", size=11)),
+                        overlaying="y",
+                        side="right",
+                        showgrid=False,
+                        tickfont=dict(family="JetBrains Mono, monospace", size=10, color="#e11d48"),
+                    ),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                                xanchor="right", x=1, font=dict(size=11)),
+                    paper_bgcolor="#ffffff",
+                    plot_bgcolor="#fafafa",
+                    height=520,
+                    margin=dict(t=56, l=60, r=72, b=52),
+                    font=dict(family="Space Grotesk, sans-serif", size=11, color=TEXT_MUTED),
+                    hoverlabel=dict(bgcolor="#1e293b", font_size=12,
+                                    font_family="JetBrains Mono, monospace",
+                                    font_color="#f8fafc"),
+                )
+                ml_fig.update_xaxes(showgrid=True, gridcolor="#f1f5f9", zeroline=False,
+                                     tickfont=dict(family="JetBrains Mono, monospace", size=10))
+
+                st.plotly_chart(ml_fig, use_container_width=True,
+                                config={"displayModeBar": True, "displaylogo": False})
+
+                st.caption(
+                    "Multi-layer chart: stacked bars show electricity generation mix (TWh) per source per year. "
+                    "The red line overlaid on the secondary Y-axis shows the average national CO₂ trend. "
+                    "Both layers share the same X-axis (Year) — bar + line on the same chart."
+                )
 
 
     # WORLD MAP  —  Animated choropleth with play button
